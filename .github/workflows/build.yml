@@ -189,8 +189,8 @@ jobs:
     - name: Install dependencies
       run: |
         sudo apt-get update
-        # Install the ARM64 cross-compiler for the Native C Launcher
-        sudo apt-get install -y gcc-aarch64-linux-gnu imagemagick
+        # Standard gcc works here because we are on a native ARM runner
+        sudo apt-get install -y gcc imagemagick libsdl2-2.0-0 libopenal1 libgtk-3-0 libgtk-3-dev libglib2.0-0 libcairo2 libpango-1.0-0 libgdk-pixbuf2.0-0 libatk1.0-0
     - name: Restore dependencies
       run: dotnet restore Client/Simitone/Simitone.Desktop/Simitone.Desktop.csproj -r linux-arm64
     - name: Publish Linux ARM64 (self-contained)
@@ -201,11 +201,11 @@ jobs:
           --self-contained true \
           -o publish/linux-arm64 \
           /p:TreatWarningsAsErrors=false
-    - name: Build Linux Launcher (Cross-compile to ARM64)
+    - name: Build Linux Launcher (Native ARM64)
       run: |
         mkdir -p publish/launcher-native
-        # Use the cross-compiler instead of standard gcc
-        aarch64-linux-gnu-gcc -O2 -s Client/Simitone/Simitone.Launcher/launcher.c -o publish/launcher-native/Simitone
+        # Just use gcc; it will produce an ARM64 binary naturally
+        gcc -O2 -s Client/Simitone/Simitone.Launcher/launcher.c -o publish/launcher-native/Simitone
     - name: Create Linux ARM64 release structure
       run: |
         mkdir -p release/Simitone-Linux-arm64/lib
@@ -213,16 +213,27 @@ jobs:
         chmod +x release/Simitone-Linux-arm64/Simitone
         cp -r publish/linux-arm64/* release/Simitone-Linux-arm64/lib/
         
-        # Cleanup (Matching your existing logic)
+        # Cleanup
         for d in Content/Objects Content/Patch Content/Avatar Content/MeshReplace Content/iOS Content/Cities Content/Blueprints DatabaseScripts MailTemplates IDERes; do
           rm -rf "release/Simitone-Linux-arm64/lib/$d"
         done
-        # Keep only linux-arm64 native runtimes
+        for locale in ru ja fr de it pl ko es pt-BR tr cs zh-Hans zh-Hant sv ro hu; do
+          rm -rf "release/Simitone-Linux-arm64/lib/$locale"
+        done
+
+        # Keep only linux-arm64 or unix native runtimes
         if [ -d release/Simitone-Linux-arm64/lib/runtimes ]; then
           for d in release/Simitone-Linux-arm64/lib/runtimes/*/; do
-            case "$(basename "$d")" in *arm64*) ;; *) rm -rf "$d" ;; esac
+            dirname=$(basename "$d")
+            case "$dirname" in 
+              linux-arm64|unix) ;; 
+              *) rm -rf "$d" ;; 
+            esac
           done
         fi
+        
+        cp Client/Simitone/Simitone.Launcher/simitone.desktop release/Simitone-Linux-arm64/
+        chmod +x release/Simitone-Linux-arm64/simitone.desktop
         convert Client/Simitone/Simitone.Windows/Icon.ico -resize 256x256 release/Simitone-Linux-arm64/lib/Resources/icon.png || true
     - name: Upload Linux ARM64 artifacts
       uses: actions/upload-artifact@v4
