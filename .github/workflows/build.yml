@@ -192,7 +192,7 @@ jobs:
         # Standard gcc works here because we are on a native ARM runner
         sudo apt-get install -y gcc imagemagick libsdl2-2.0-0 libopenal1 libgtk-3-0 libgtk-3-dev libglib2.0-0 libcairo2 libpango-1.0-0 libgdk-pixbuf2.0-0 libatk1.0-0
     - name: Restore dependencies
-      run: dotnet restore Client/Simitone/Simitone.Desktop/Simitone.Desktop.csproj -r linux-arm64
+      run: dotnet restore Client/Simitone/Simitone.Desktop/Simitone.Desktop.csproj -r linux-arm64 /p:NoWarn=NU1605
     - name: Publish Linux ARM64 (self-contained)
       run: |
         dotnet publish Client/Simitone/Simitone.Desktop/Simitone.Desktop.csproj \
@@ -200,7 +200,10 @@ jobs:
           -r linux-arm64 \
           --self-contained true \
           -o publish/linux-arm64 \
-          /p:TreatWarningsAsErrors=false
+          --no-restore \
+          /p:TreatWarningsAsErrors=false \
+          /p:WarningsAsErrors="" \
+          /p:NoWarn=NU1605
     - name: Build Linux Launcher (Native ARM64)
       run: |
         mkdir -p publish/launcher-native
