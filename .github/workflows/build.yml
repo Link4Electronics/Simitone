@@ -19,6 +19,10 @@ on:
         description: 'Build Linux'
         type: boolean
         default: true
+      build_linux_arm64:
+        description: 'Build Linux ARM64'
+        type: boolean
+        default: true
       build_macos:
         description: 'Build macOS'
         type: boolean
@@ -29,49 +33,40 @@ jobs:
     if: ${{ inputs.build_windows }}
     runs-on: windows-latest
     name: Build Windows
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         submodules: recursive
-
     - name: Setup .NET 9
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '9.0.x'
-
     - name: Run Protobuild
       shell: pwsh
       run: |
         cd FreeSO/Other/libs/FSOMonoGame/
         ./protobuild.exe --generate
       continue-on-error: true
-
     - name: Restore Simitone dependencies
       run: dotnet restore Client/Simitone/Simitone.sln
-
     - name: Restore FreeSO dependencies
       run: dotnet restore FreeSO/TSOClient/FreeSO.sln
       continue-on-error: true
-
     - name: Restore Roslyn dependencies
       shell: pwsh
       run: |
         cd FreeSO/TSOClient/FSO.SimAntics.JIT.Roslyn/
         dotnet restore
       continue-on-error: true
-
     - name: Build Windows
       run: dotnet build Client/Simitone/Simitone.Windows/Simitone.Windows.csproj -c ${{ inputs.configuration || 'Release' }} --no-restore
-
     - name: Build Windows Launcher (Native AOT)
       run: |
         dotnet publish Client/Simitone/Simitone.Launcher/Simitone.Launcher.csproj `
           -c ${{ inputs.configuration || 'Release' }} `
           -r win-x64 `
           -o publish/launcher-win
-
     - name: Create Windows release structure
       shell: pwsh
       run: |
@@ -107,7 +102,6 @@ jobs:
             Where-Object { $_.Name -notin @("win", "win-x64") } |
             ForEach-Object { Remove-Item $_.FullName -Recurse -Force }
         }
-
     - name: Upload Windows artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -119,29 +113,23 @@ jobs:
     if: ${{ inputs.build_linux }}
     runs-on: ubuntu-latest
     name: Build Linux
-
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         submodules: recursive
-
     - name: Setup .NET 9
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '9.0.x'
-
     - name: Install dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y libsdl2-2.0-0 libopenal1 libgtk-3-0 libgtk-3-dev libglib2.0-0 libcairo2 libpango-1.0-0 libgdk-pixbuf2.0-0 libatk1.0-0 imagemagick
-
     - name: Restore dependencies
       run: dotnet restore Client/Simitone/Simitone.Desktop/Simitone.Desktop.csproj
-
     - name: Build Linux
       run: dotnet build Client/Simitone/Simitone.Desktop/Simitone.Desktop.csproj -c ${{ inputs.configuration || 'Release' }} --no-restore
-
     - name: Publish Linux (self-contained)
       run: |
         dotnet publish Client/Simitone/Simitone.Desktop/Simitone.Desktop.csproj \
@@ -151,12 +139,10 @@ jobs:
           -o publish/linux-x64 \
           /p:TreatWarningsAsErrors=false \
           /p:WarningsAsErrors=""
-
     - name: Build Linux Launcher (Native C)
       run: |
         mkdir -p publish/launcher-native
         gcc -O2 -s Client/Simitone/Simitone.Launcher/launcher.c -o publish/launcher-native/Simitone
-
     - name: Create Linux release structure
       run: |
         mkdir -p release/Simitone-Linux-x64/lib
@@ -180,50 +166,101 @@ jobs:
         chmod +x release/Simitone-Linux-x64/simitone.desktop
         # Convert icon to PNG
         convert Client/Simitone/Simitone.Windows/Icon.ico -resize 256x256 release/Simitone-Linux-x64/lib/Resources/icon.png || true
-
     - name: Upload Linux artifacts
       uses: actions/upload-artifact@v4
       with:
         name: Simitone-Linux-x64-${{ inputs.configuration || 'Release' }}
         path: release/Simitone-Linux-x64/
         if-no-files-found: error
-
-  build-macos:
-    if: ${{ inputs.build_macos }}
-    runs-on: macos-latest
-    name: Build macOS
-
+  build-linux-arm64:
+    if: ${{ inputs.build_linux_arm64 }}
+    runs-on: ubuntu-latest
+    name: Build Linux ARM64
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         submodules: recursive
-
     - name: Setup .NET 9
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '9.0.x'
-
     - name: Install dependencies
       run: |
-        brew install sdl2
-
+        sudo apt-get update
+        # Install the ARM64 cross-compiler for the Native C Launcher
+        sudo apt-get install -y gcc-aarch64-linux-gnu imagemagick
     - name: Restore dependencies
-      run: dotnet restore Client/Simitone/Simitone.Desktop/Simitone.Desktop.csproj -r osx-x64 /p:TreatWarningsAsErrors=false /p:WarningsAsErrors="" /p:NoWarn=NU1605
-
-    - name: Build macOS
-      run: dotnet build Client/Simitone/Simitone.Desktop/Simitone.Desktop.csproj -c ${{ inputs.configuration || 'Release' }} -r osx-x64 --no-restore /p:TreatWarningsAsErrors=false /p:WarningsAsErrors="" /p:NoWarn=NU1605
-
-    - name: Publish macOS Intel (self-contained)
+      run: dotnet restore Client/Simitone/Simitone.Desktop/Simitone.Desktop.csproj -r linux-arm64
+    - name: Publish Linux ARM64 (self-contained)
       run: |
         dotnet publish Client/Simitone/Simitone.Desktop/Simitone.Desktop.csproj \
           -c ${{ inputs.configuration || 'Release' }} \
+          -r linux-arm64 \
+          --self-contained true \
+          -o publish/linux-arm64 \
+          /p:TreatWarningsAsErrors=false
+    - name: Build Linux Launcher (Cross-compile to ARM64)
+      run: |
+        mkdir -p publish/launcher-native
+        # Use the cross-compiler instead of standard gcc
+        aarch64-linux-gnu-gcc -O2 -s Client/Simitone/Simitone.Launcher/launcher.c -o publish/launcher-native/Simitone
+    - name: Create Linux ARM64 release structure
+      run: |
+        mkdir -p release/Simitone-Linux-arm64/lib
+        cp publish/launcher-native/Simitone release/Simitone-Linux-arm64/Simitone
+        chmod +x release/Simitone-Linux-arm64/Simitone
+        cp -r publish/linux-arm64/* release/Simitone-Linux-arm64/lib/
+        
+        # Cleanup (Matching your existing logic)
+        for d in Content/Objects Content/Patch Content/Avatar Content/MeshReplace Content/iOS Content/Cities Content/Blueprints DatabaseScripts MailTemplates IDERes; do
+          rm -rf "release/Simitone-Linux-arm64/lib/$d"
+        done
+        # Keep only linux-arm64 native runtimes
+        if [ -d release/Simitone-Linux-arm64/lib/runtimes ]; then
+          for d in release/Simitone-Linux-arm64/lib/runtimes/*/; do
+            case "$(basename "$d")" in *arm64*) ;; *) rm -rf "$d" ;; esac
+          done
+        fi
+        convert Client/Simitone/Simitone.Windows/Icon.ico -resize 256x256 release/Simitone-Linux-arm64/lib/Resources/icon.png || true
+    - name: Upload Linux ARM64 artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Simitone-Linux-arm64-${{ inputs.configuration || 'Release' }}
+        path: release/Simitone-Linux-arm64/
+        if-no-files-found: error
+  build-macos:
+    if: ${{ inputs.build_macos }}
+    runs-on: macos-latest
+    name: Build macOS
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: Setup .NET 9
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '9.0.x'
+    - name: Install dependencies
+      run: |
+        brew install sdl2
+    - name: Restore dependencies
+      run: dotnet restore Client/Simitone/Simitone.Desktop/Simitone.Desktop.csproj -r osx-x64 /p:TreatWarningsAsErrors=false /p:WarningsAsErrors="" /p:NoWarn=NU1605
+    - name: Build macOS
+      run: dotnet build Client/Simitone/Simitone.Desktop/Simitone.Desktop.csproj -c ${{ inputs.configuration || 'Release' }} -r osx-x64 --no-restore /p:TreatWarningsAsErrors=false /p:WarningsAsErrors="" /p:NoWarn=NU1605
+    - name: Publish macOS Intel (self-contained)
+      run: |
+        dotnet publish Client/Simitone/Simitone.Desktop/Simitone.Desktop.csproj \
+          -c ${{ inputs.configuration || 'Release' }} \          -c ${{ inputs.configuration || 'Release' }} \
+          -r linux-x64 \
+          --self-contained true \
+          -o publish/linux-x64 \
           -r osx-x64 \
           --self-contained true \
           -o publish/osx-x64 \
           /p:TreatWarningsAsErrors=false \
           /p:WarningsAsErrors=""
-
     - name: Publish macOS ARM (self-contained)
       run: |
         dotnet publish Client/Simitone/Simitone.Desktop/Simitone.Desktop.csproj \
@@ -233,17 +270,14 @@ jobs:
           -o publish/osx-arm64 \
           /p:TreatWarningsAsErrors=false \
           /p:WarningsAsErrors=""
-
     - name: Build macOS Launcher (Native C) for Intel
       run: |
         mkdir -p publish/launcher-native-x64
         clang -O2 -target x86_64-apple-macos10.12 Client/Simitone/Simitone.Launcher/launcher.c -o publish/launcher-native-x64/Simitone
-
     - name: Build macOS Launcher (Native C) for ARM
       run: |
         mkdir -p publish/launcher-native-arm64
         clang -O2 -target arm64-apple-macos11 Client/Simitone/Simitone.Launcher/launcher.c -o publish/launcher-native-arm64/Simitone
-
     - name: Create macOS Intel release structure
       run: |
         mkdir -p release/Simitone-macOS-x64/lib
@@ -263,7 +297,6 @@ jobs:
             case "$(basename "$d")" in osx*|unix*) ;; *) rm -rf "$d" ;; esac
           done
         fi
-
     - name: Create macOS ARM release structure
       run: |
         mkdir -p release/Simitone-macOS-arm64/lib
@@ -283,14 +316,12 @@ jobs:
             case "$(basename "$d")" in osx*|unix*) ;; *) rm -rf "$d" ;; esac
           done
         fi
-
     - name: Upload macOS Intel artifacts
       uses: actions/upload-artifact@v4
       with:
         name: Simitone-macOS-x64-${{ inputs.configuration || 'Release' }}
         path: release/Simitone-macOS-x64/
         if-no-files-found: error
-
     - name: Upload macOS ARM artifacts
       uses: actions/upload-artifact@v4
       with:
