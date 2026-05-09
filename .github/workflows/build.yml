@@ -172,9 +172,10 @@ jobs:
         name: Simitone-Linux-x64-${{ inputs.configuration || 'Release' }}
         path: release/Simitone-Linux-x64/
         if-no-files-found: error
+
   build-linux-arm64:
     if: ${{ inputs.build_linux_arm64 }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     name: Build Linux ARM64
     steps:
     - name: Checkout code
@@ -229,6 +230,7 @@ jobs:
         name: Simitone-Linux-arm64-${{ inputs.configuration || 'Release' }}
         path: release/Simitone-Linux-arm64/
         if-no-files-found: error
+
   build-macos:
     if: ${{ inputs.build_macos }}
     runs-on: macos-latest
